@@ -1,6 +1,7 @@
 #!/bin/usr/env python
 # -*- coding: utf-8 -*-
 
+
 import HTMLParser
 from math import ceil
 from time import sleep
@@ -59,6 +60,8 @@ def scrape_study(study_id):
     content = tree.xpath("//div[@id='main-content']")[0]
     title = content.xpath("//h1/text()")[0]
     study['title'] = entities.unescape(title)
+    status = content.xpath("//div[@id='trial-info-1']/div/text()")[0]
+    study['status'] = entities.unescape(status).strip()
     sponsor = content.xpath(
         "//div[@id='trial-info-1']"
         "/div[@id='sponsor']/text()")[0].strip()
@@ -148,6 +151,7 @@ def pprint_study(study_dict):
     print '\n', 'URL:', study_dict['url']
     print '\n', 'TITLE:', study_dict['title']
     print '\n', 'SPONSOR:', study_dict['sponsor']
+    print '\n', 'STATUS:', study_dict['status']
     print '\n', 'PURPOSE:', study_dict['purpose']
     print '\n', 'CONDITIONS:'
     for c in study_dict['conditions']:
@@ -169,16 +173,12 @@ def pprint_study(study_dict):
         print loc_str
 
 
-#TODO: get study status too, to see if it changes (closes especially)
-#TODO: add 'id': value to study dict.
-
-
 if __name__ == '__main__':
 
     DELAY = 1
 
-    #URL = 'https://clinicaltrials.gov/ct2/results?term=heart+attack&cntry1=SA%3ACL'
-    URL = 'http://clinicaltrials.gov/ct2/results?term=cancer&recr=Open&rslt=&type=&cond=&intr=&titles=&outc=&spons=&lead=&id=&state1=&cntry1=SA%3ACL&state2=&cntry2=&state3=&cntry3=&locn=&gndr=&rcv_s=&rcv_e=&lup_s=&lup_e='
+    URL = 'https://clinicaltrials.gov/ct2/results?term=heart+attack&cntry1=SA%3ACL'
+    #URL = 'http://clinicaltrials.gov/ct2/results?term=cancer&recr=Open&rslt=&type=&cond=&intr=&titles=&outc=&spons=&lead=&id=&state1=&cntry1=SA%3ACL&state2=&cntry2=&state3=&cntry3=&locn=&gndr=&rcv_s=&rcv_e=&lup_s=&lup_e='
 
     results = search_ct(URL)
     studies = scrape_all_studies(results)
