@@ -2,10 +2,12 @@
 # -*- coding: utf-8 -*-
 
 
+import cPickle
 import HTMLParser
 from math import ceil
 from time import sleep
 from lxml import html
+import MySQLdb
 import requests
 
 
@@ -60,8 +62,9 @@ def scrape_study(study_id):
     content = tree.xpath("//div[@id='main-content']")[0]
     title = content.xpath("//h1/text()")[0]
     study['title'] = entities.unescape(title)
-    status = content.xpath("//div[@id='trial-info-1']/div/text()")[0]
-    study['status'] = entities.unescape(status).strip()
+    status = content.xpath(
+        "//div[@id='trial-info-1']/div/text()")[0].strip()
+    study['status'] = entities.unescape(status)
     sponsor = content.xpath(
         "//div[@id='trial-info-1']"
         "/div[@id='sponsor']/text()")[0].strip()
@@ -147,21 +150,21 @@ def scrape_all_studies(search_results):
 
 
 def pprint_study(study_dict):
-    print '\n', 'ID:', study_dict['id']
-    print '\n', 'URL:', study_dict['url']
-    print '\n', 'TITLE:', study_dict['title']
-    print '\n', 'SPONSOR:', study_dict['sponsor']
-    print '\n', 'STATUS:', study_dict['status']
-    print '\n', 'PURPOSE:', study_dict['purpose']
+    print '\n', 'ID:', study_dict['id'].encode('utf-8')
+    print '\n', 'URL:', study_dict['url'].encode('utf-8')
+    print '\n', 'TITLE:', study_dict['title'].encode('utf-8')
+    print '\n', 'SPONSOR:', study_dict['sponsor'].encode('utf-8')
+    print '\n', 'STATUS:', study_dict['status'].encode('utf-8')
+    print '\n', 'PURPOSE:', study_dict['purpose'].encode('utf-8')
     print '\n', 'CONDITIONS:'
     for c in study_dict['conditions']:
-        print c
+        print c.encode('utf-8')
     if len(study_dict['interventions']) == 0:
         print '\n', 'INTERVENTIONS: No interventions.'
     else:
         print '\n', 'INTERVENTIONS:'
         for i in study_dict['interventions']:
-            print i
+            print i.encode('utf-8')
     print '\n', 'LOCATIONS:'
     for l in study_dict['locations']:
         loc_str = ''
@@ -170,25 +173,100 @@ def pprint_study(study_dict):
         if l['name']:
             loc_str += l['name'] + '; '
         loc_str += l['place']
-        print loc_str
+        print loc_str.encode('utf-8')
+
+
+def pickle_results(studies, filename):
+    with open(filename, 'wb') as pickle_file:
+        cPickle.dump(studies, pickle_file, -1)
+
+
+def unpickle_results(filename):
+    with open(filename, 'rb') as pickle_file:
+        studies = cPickle.load(pickle_file)
+    return studies
+
+
+def mysql_connect(hostname, username, password, database):
+    connection = MySQLdb.connect(
+        hostname, username, password, database, charset='utf8')
+    cursor = connection.cursor()
+    return connection, cursor
+
+
+def mysql_select_ids(mysql_connection, db_cursor):
+    select_study_ids = "SELECT id FROM studies"
+    db_cursor.execute(select_study_ids)
+    stored_ids = db_cursor.fetchall()
+    stored_ids = [t[0] for t in stored_ids]
+    return stored_ids
+
+
+def insert_or_update(mysql_connection, db_cursor, search_results):
+    stored_ids = mysql_select_ids(mysql_connection, db_cursor)
+    for study in search_results:
+        print '\nresults id:', study['id']
+        if study['id'] in stored_ids:
+            print 'already exists. do update.'
+        else:
+            print "doesn't exist. inserting to db."
+            try:
+                insert_studies = \
+                    "INSERT INTO studies(id, title, sponsor, purpose, status) \
+                    VALUES (%s, %s, %s, %s, %s)"
+                db_cursor.execute(insert_studies, (
+                    study['id'].encode('utf-8'),
+                    study['title'].encode('utf-8'),
+                    study['sponsor'].encode('utf-8'),
+                    study['purpose'].encode('utf-8'),
+                    study['status'].encode('utf-8')))
+                mysql_connection.commit()
+            except (MySQLdb.Error, UnicodeEncodeError) as e:
+                print str(e)
+                print
+                for key in ('title', 'sponsor', 'purpose', 'status'):
+                    print key
+                    print type(study[key])
+                    print repr(study[key])
+                    print
+                raise
+
+
+"""
+TODO: exceptions for mysql transcations.
+        #try:
+            #cursor.execute(sql_stmt)
+            #mysql_connection.commit()
+        #except MySQLdb.Error, e:
+            #mysql_connection.rollback()
+            #print 'MySQL Error:', str(e)
+            #raise
+        #[...]
+    #mysql_connection.close()
+"""
 
 
 if __name__ == '__main__':
 
     DELAY = 1
 
-    URL = 'https://clinicaltrials.gov/ct2/results?term=heart+attack&cntry1=SA%3ACL'
-    #URL = 'http://clinicaltrials.gov/ct2/results?term=cancer&recr=Open&rslt=&type=&cond=&intr=&titles=&outc=&spons=&lead=&id=&state1=&cntry1=SA%3ACL&state2=&cntry2=&state3=&cntry3=&locn=&gndr=&rcv_s=&rcv_e=&lup_s=&lup_e='
+    #URL1 = 'https://clinicaltrials.gov/ct2/results?term=heart+attack&cntry1=SA%3ACL'
+    URL2 = 'http://clinicaltrials.gov/ct2/results?term=cancer&recr=Open&rslt=&type=&cond=&intr=&titles=&outc=&spons=&lead=&id=&state1=&cntry1=SA%3ACL&state2=&cntry2=&state3=&cntry3=&locn=&gndr=&rcv_s=&rcv_e=&lup_s=&lup_e='
 
-    results = search_ct(URL)
-    studies = scrape_all_studies(results)
+    #results = search_ct(URL2)
+    #studies = scrape_all_studies(results)
 
-    print
-    print 'URL:', URL
-    print
-    print '# RESULTS:', len(studies)
-    print
-    raw_input('press ENTER')
-    for s in studies:
-        pprint_study(s)
-        raw_input('\npress ENTER')
+    #pickle_results(studies, 'url2pickle')
+
+    studies = unpickle_results('url2.pickle')
+
+    #print '\nURL:', URL2
+    #print '\n# RESULTS:', len(studies), '\n'
+    #raw_input('press ENTER')
+    #for s in studies:
+        #pprint_study(s)
+        ##raw_input('\npress ENTER')
+
+    db_conn, db_cursor = mysql_connect(
+        '192.168.0.100', 'clinicaltrials', '4Fcm3R76', 'clinicaltrials')
+    proc_results = insert_or_update(db_conn, db_cursor, studies)
