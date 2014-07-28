@@ -94,7 +94,7 @@ def scrape_study(study_id):
         intr_tag = ci_tag[1]
         interventions = intr_tag.text_content().split('\r\n')
         interventions = [entities.unescape(i.strip())
-                         for i in interventions if i]
+                         for i in interventions if i.strip()]
     except IndexError:
         interventions = []
     study['interventions'] = interventions
@@ -150,22 +150,22 @@ def scrape_all_studies(search_results):
 
 
 def pprint_study(study_dict):
-    print '\n', 'ID:', study_dict['id'].encode('utf-8')
-    print '\n', 'URL:', study_dict['url'].encode('utf-8')
-    print '\n', 'TITLE:', study_dict['title'].encode('utf-8')
-    print '\n', 'SPONSOR:', study_dict['sponsor'].encode('utf-8')
-    print '\n', 'STATUS:', study_dict['status'].encode('utf-8')
-    print '\n', 'PURPOSE:', study_dict['purpose'].encode('utf-8')
-    print '\n', 'CONDITIONS:'
+    print '\nID:', study_dict['id'].encode('utf-8')
+    print 'URL:', study_dict['url'].encode('utf-8')
+    print 'TITLE:', study_dict['title'].encode('utf-8')
+    print 'SPONSOR:', study_dict['sponsor'].encode('utf-8')
+    print 'STATUS:', study_dict['status'].encode('utf-8')
+    print 'PURPOSE:\n', study_dict['purpose'].encode('utf-8')
+    print 'CONDITIONS:'
     for c in study_dict['conditions']:
-        print c.encode('utf-8')
+        print '  - ' + c.encode('utf-8')
     if len(study_dict['interventions']) == 0:
-        print '\n', 'INTERVENTIONS: No interventions.'
+        print 'INTERVENTIONS: No interventions.'
     else:
-        print '\n', 'INTERVENTIONS:'
+        print 'INTERVENTIONS:'
         for i in study_dict['interventions']:
-            print i.encode('utf-8')
-    print '\n', 'LOCATIONS:'
+            print '  - ' + i.encode('utf-8')
+    print 'LOCATIONS:'
     for l in study_dict['locations']:
         loc_str = ''
         if l['status']:
@@ -173,7 +173,7 @@ def pprint_study(study_dict):
         if l['name']:
             loc_str += l['name'] + '; '
         loc_str += l['place']
-        print loc_str.encode('utf-8')
+        print '  - ' + loc_str.encode('utf-8')
 
 
 def pickle_results(studies, filename):
@@ -194,12 +194,87 @@ def mysql_connect(hostname, username, password, database):
     return connection, cursor
 
 
+def mysql_create_tables(mysql_connection, db_cursor):
+    #db_cursor.execute('DROP TABLE IF EXISTS studies')
+    #db_cursor.execute('DROP TABLE IF EXISTS conditions')
+    #db_cursor.execute('DROP TABLE IF EXISTS interventions')
+    #db_cursor.execute('DROP TABLE IF EXISTS locations')
+    db_cursor.execute(
+        'CREATE TABLE studies (id VARCHAR(11) NOT NULL, title TEXT NOT NULL, \
+        sponsor TEXT NOT NULL, purpose TEXT NOT NULL, status TEXT NOT NULL, \
+        PRIMARY KEY (id)) COLLATE utf8_unicode_ci;')
+    db_cursor.execute(
+        'CREATE TABLE conditions (id INT NOT NULL AUTO_INCREMENT, \
+        sid VARCHAR(11) NOT NULL, cnd TEXT NOT NULL, \
+        PRIMARY KEY (id)) COLLATE utf8_unicode_ci;')
+    db_cursor.execute(
+        'CREATE TABLE interventions (id INT NOT NULL AUTO_INCREMENT, \
+        sid VARCHAR(11) NOT NULL, intv TEXT NOT NULL, \
+        PRIMARY KEY (id)) COLLATE utf8_unicode_ci;')
+    db_cursor.execute(
+        'CREATE TABLE locations (id INT NOT NULL AUTO_INCREMENT, \
+        sid VARCHAR(11) NOT NULL, name TEXT, status TEXT, \
+        place TEXT NOT NULL, \
+        PRIMARY KEY (id)) COLLATE utf8_unicode_ci;')
+    mysql_connection.commit()
+
+
 def mysql_select_ids(mysql_connection, db_cursor):
     select_study_ids = "SELECT id FROM studies"
     db_cursor.execute(select_study_ids)
     stored_ids = db_cursor.fetchall()
     stored_ids = [t[0] for t in stored_ids]
     return stored_ids
+
+
+def mysql_insert_conds(mysql_connection, db_cursor, study):
+    """
+'condition' cannot be a column name
+    """
+    for cond in study['conditions']:
+        insert_conds = \
+            "INSERT INTO conditions(sid, cnd) VALUES (%s, %s)"
+        db_cursor.execute(insert_conds, (study['id'].encode('utf-8'),
+                                         cond.encode('utf-8')))
+        #mysql_connection.commit()
+
+
+def mysql_insert_inter(mysql_connection, db_cursor, study):
+    for inter in study['interventions']:
+        insert_inter = \
+            "INSERT INTO interventions(sid, intv) VALUES (%s, %s)"
+        db_cursor.execute(insert_inter, (study['id'].encode('utf-8'),
+                                         inter.encode('utf-8')))
+        #mysql_connection.commit()
+
+
+def mysql_insert_locs(mysql_connection, db_cursor, study):
+    for loc in study['locations']:
+        insert_loc = \
+            "INSERT INTO locations(sid, name, status, place) \
+            VALUES (%s, %s, %s, %s)"
+        db_cursor.execute(insert_loc, (
+            study['id'].encode('utf-8'),
+            loc['name'].encode('utf-8') if loc['name'] else None,
+            loc['status'].encode('utf-8') if loc['status'] else None,
+            loc['place'].encode('utf-8')))
+        #mysql_connection.commit()
+
+
+def mysql_insert_study(mysql_connection, db_cursor, study):
+    insert_studies = \
+        "INSERT INTO studies(id, title, sponsor, purpose, status) \
+        VALUES (%s, %s, %s, %s, %s)"
+    db_cursor.execute(insert_studies, (
+        study['id'].encode('utf-8'),
+        study['title'].encode('utf-8'),
+        study['sponsor'].encode('utf-8'),
+        study['purpose'].encode('utf-8'),
+        study['status'].encode('utf-8')))
+    mysql_insert_conds(mysql_connection, db_cursor, study)
+    mysql_insert_inter(mysql_connection, db_cursor, study)
+    mysql_insert_locs(mysql_connection, db_cursor, study)
+    mysql_connection.commit()
 
 
 def insert_or_update(mysql_connection, db_cursor, search_results):
@@ -210,26 +285,7 @@ def insert_or_update(mysql_connection, db_cursor, search_results):
             print 'already exists. do update.'
         else:
             print "doesn't exist. inserting to db."
-            try:
-                insert_studies = \
-                    "INSERT INTO studies(id, title, sponsor, purpose, status) \
-                    VALUES (%s, %s, %s, %s, %s)"
-                db_cursor.execute(insert_studies, (
-                    study['id'].encode('utf-8'),
-                    study['title'].encode('utf-8'),
-                    study['sponsor'].encode('utf-8'),
-                    study['purpose'].encode('utf-8'),
-                    study['status'].encode('utf-8')))
-                mysql_connection.commit()
-            except (MySQLdb.Error, UnicodeEncodeError) as e:
-                print str(e)
-                print
-                for key in ('title', 'sponsor', 'purpose', 'status'):
-                    print key
-                    print type(study[key])
-                    print repr(study[key])
-                    print
-                raise
+            mysql_insert_study(mysql_connection, db_cursor, study)
 
 
 """
@@ -250,23 +306,38 @@ if __name__ == '__main__':
 
     DELAY = 1
 
-    #URL1 = 'https://clinicaltrials.gov/ct2/results?term=heart+attack&cntry1=SA%3ACL'
-    URL2 = 'http://clinicaltrials.gov/ct2/results?term=cancer&recr=Open&rslt=&type=&cond=&intr=&titles=&outc=&spons=&lead=&id=&state1=&cntry1=SA%3ACL&state2=&cntry2=&state3=&cntry3=&locn=&gndr=&rcv_s=&rcv_e=&lup_s=&lup_e='
+    URL1 = 'https://clinicaltrials.gov/ct2/results?term=heart+attack&cntry1=SA%3ACL'
+    #URL2 = 'http://clinicaltrials.gov/ct2/results?term=cancer&recr=Open&rslt=&type=&cond=&intr=&titles=&outc=&spons=&lead=&id=&state1=&cntry1=SA%3ACL&state2=&cntry2=&state3=&cntry3=&locn=&gndr=&rcv_s=&rcv_e=&lup_s=&lup_e='
 
-    #results = search_ct(URL2)
+    #results = search_ct(URL1)
     #studies = scrape_all_studies(results)
 
-    #pickle_results(studies, 'url2pickle')
+    #pickle_results(studies, 'url1pickle')
 
-    studies = unpickle_results('url2.pickle')
+    studies = unpickle_results('url1.pickle')
 
-    #print '\nURL:', URL2
-    #print '\n# RESULTS:', len(studies), '\n'
-    #raw_input('press ENTER')
+    #print 'URL:', URL1
+    #print '# RESULTS:', len(studies)
     #for s in studies:
         #pprint_study(s)
-        ##raw_input('\npress ENTER')
+
+    #all_conditions = []
+    #all_interventions = []
+    #all_locations = []
+    #for s in studies:
+        #for c in s['conditions']:
+            #all_conditions.append(c)
+        #for i in s['interventions']:
+            #all_interventions.append(i)
+        #for l in s['locations']:
+            #all_locations.append(l)
+    #print
+    #print '# STUDIES:', len(studies)
+    #print '# CONDITIONS:', len(all_conditions)
+    #print '# INTERVENTIONS:', len(all_interventions)
+    #print '# LOCATIONS:', len(all_locations)
 
     db_conn, db_cursor = mysql_connect(
         '192.168.0.100', 'clinicaltrials', '4Fcm3R76', 'clinicaltrials')
+    #mysql_create_tables(db_conn, db_cursor)
     proc_results = insert_or_update(db_conn, db_cursor, studies)
