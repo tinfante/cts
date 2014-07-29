@@ -194,28 +194,36 @@ def mysql_connect(hostname, username, password, database):
     return connection, cursor
 
 
-def mysql_create_tables(mysql_connection, db_cursor):
-    #db_cursor.execute('DROP TABLE IF EXISTS studies')
-    #db_cursor.execute('DROP TABLE IF EXISTS conditions')
-    #db_cursor.execute('DROP TABLE IF EXISTS interventions')
-    #db_cursor.execute('DROP TABLE IF EXISTS locations')
+def mysql_create_tables(mysql_connection, db_cursor, wipe=False):
+    if wipe is True:
+        db_cursor.execute('DROP TABLE IF EXISTS locations')
+        db_cursor.execute('DROP TABLE IF EXISTS interventions')
+        db_cursor.execute('DROP TABLE IF EXISTS conditions')
+        db_cursor.execute('DROP TABLE IF EXISTS studies')
     db_cursor.execute(
-        'CREATE TABLE studies (id VARCHAR(11) NOT NULL, title TEXT NOT NULL, \
-        sponsor TEXT NOT NULL, purpose TEXT NOT NULL, status TEXT NOT NULL, \
-        PRIMARY KEY (id)) COLLATE utf8_unicode_ci;')
+        'CREATE TABLE studies (id VARCHAR(11) PRIMARY KEY, \
+        title TEXT NOT NULL, sponsor TEXT NOT NULL, purpose TEXT NOT NULL, \
+        status TEXT NOT NULL) \
+        COLLATE utf8_unicode_ci;')
     db_cursor.execute(
-        'CREATE TABLE conditions (id INT NOT NULL AUTO_INCREMENT, \
+        'CREATE TABLE conditions (id INT AUTO_INCREMENT PRIMARY KEY, \
         sid VARCHAR(11) NOT NULL, cnd TEXT NOT NULL, \
-        PRIMARY KEY (id)) COLLATE utf8_unicode_ci;')
+        FOREIGN KEY FK_study_id(sid) \
+        REFERENCES studies(id)) \
+        COLLATE utf8_unicode_ci;')
     db_cursor.execute(
-        'CREATE TABLE interventions (id INT NOT NULL AUTO_INCREMENT, \
+        'CREATE TABLE interventions (id INT AUTO_INCREMENT PRIMARY KEY, \
         sid VARCHAR(11) NOT NULL, intv TEXT NOT NULL, \
-        PRIMARY KEY (id)) COLLATE utf8_unicode_ci;')
+        FOREIGN KEY FK_study_id(sid) \
+        REFERENCES studies(id)) \
+        COLLATE utf8_unicode_ci;')
     db_cursor.execute(
-        'CREATE TABLE locations (id INT NOT NULL AUTO_INCREMENT, \
+        'CREATE TABLE locations (id INT AUTO_INCREMENT PRIMARY KEY, \
         sid VARCHAR(11) NOT NULL, name TEXT, status TEXT, \
         place TEXT NOT NULL, \
-        PRIMARY KEY (id)) COLLATE utf8_unicode_ci;')
+        FOREIGN KEY FK_study_id(sid) \
+        REFERENCES studies(id)) \
+        COLLATE utf8_unicode_ci;')
     mysql_connection.commit()
 
 
@@ -339,5 +347,5 @@ if __name__ == '__main__':
 
     db_conn, db_cursor = mysql_connect(
         '192.168.0.100', 'clinicaltrials', '4Fcm3R76', 'clinicaltrials')
-    #mysql_create_tables(db_conn, db_cursor)
-    proc_results = insert_or_update(db_conn, db_cursor, studies)
+    mysql_create_tables(db_conn, db_cursor, wipe=True)
+    #proc_results = insert_or_update(db_conn, db_cursor, studies)
