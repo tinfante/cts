@@ -347,5 +347,5 @@ if __name__ == '__main__':
 
     db_conn, db_cursor = mysql_connect(
         '192.168.0.100', 'clinicaltrials', '4Fcm3R76', 'clinicaltrials')
-    mysql_create_tables(db_conn, db_cursor, wipe=True)
-    #proc_results = insert_or_update(db_conn, db_cursor, studies)
+    #mysql_create_tables(db_conn, db_cursor, wipe=True)
+    proc_results = insert_or_update(db_conn, db_cursor, studies)
